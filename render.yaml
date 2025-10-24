@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: cs2-offsets-server
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GITHUB_TOKEN
+        sync: false
+    healthCheckPath: /offsets
