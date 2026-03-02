@@ -35,7 +35,7 @@ async function fetchFileFromGitHub(path) {
 // Endpoint para client_dll.cs
 app.get("/client_dll", async (req, res) => {
   const now = Date.now();
-  const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+  const TWELVE_HOURS = 6 * 60 * 60 * 1000;
 
   if (cache.client_dll && now - cache.updated_at < TWELVE_HOURS) {
     return res.type('text/plain').send(cache.client_dll);
@@ -54,7 +54,7 @@ app.get("/client_dll", async (req, res) => {
 // Endpoint para offsets.cs
 app.get("/offsets", async (req, res) => {
   const now = Date.now();
-  const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+  const TWELVE_HOURS = 6 * 60 * 60 * 1000;
 
   if (cache.offsets_cs && now - cache.updated_at < TWELVE_HOURS) {
     return res.type('text/plain').send(cache.offsets_cs);
@@ -91,7 +91,7 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🌐 Servidor de offsets activo en http://localhost:${PORT}`);
+  console.log(`🌐 Servidor de offsets activo`);
   console.log(`📊 Endpoints disponibles:`);
   console.log(`   • /client_dll`);
   console.log(`   • /offsets`);
