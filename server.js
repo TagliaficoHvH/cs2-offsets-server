@@ -3,16 +3,18 @@ import fetch from "node-fetch";
 
 const app = express();
 
+const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 horas
+
 // Middleware de seguridad básico
 app.use((req, res, next) => {
   res.setHeader('X-Powered-By', 'CS2 Offset Server');
   next();
 });
 
+// ✅ FIX: cada archivo tiene su propio timestamp
 let cache = {
-  client_dll: null,
-  offsets_cs: null,
-  updated_at: 0,
+  client_dll: { data: null, updated_at: 0 },
+  offsets_cs:  { data: null, updated_at: 0 },
 };
 
 async function fetchFileFromGitHub(path) {
@@ -32,21 +34,44 @@ async function fetchFileFromGitHub(path) {
   return Buffer.from(json.content, "base64").toString("utf8");
 }
 
-// Endpoint para client_dll.cs
-app.get("/client_dll", async (req, res) => {
-  const now = Date.now();
-  const TWELVE_HOURS = 6 * 60 * 60 * 1000;
-
-  if (cache.client_dll && now - cache.updated_at < TWELVE_HOURS) {
-    return res.type('text/plain').send(cache.client_dll);
+// ✅ FIX: refresco automático en background cada 6 horas
+async function refreshCache() {
+  console.log("🔄 Actualizando caché...");
+  try {
+    cache.client_dll.data       = await fetchFileFromGitHub("client_dll.cs");
+    cache.client_dll.updated_at = Date.now();
+    console.log("✅ client_dll actualizado");
+  } catch (err) {
+    console.error("❌ Error actualizando client_dll:", err.message);
   }
 
   try {
-    cache.client_dll = await fetchFileFromGitHub("client_dll.cs");
-    cache.updated_at = now;
-    res.type('text/plain').send(cache.client_dll);
+    cache.offsets_cs.data       = await fetchFileFromGitHub("offsets.cs");
+    cache.offsets_cs.updated_at = Date.now();
+    console.log("✅ offsets_cs actualizado");
   } catch (err) {
-    if (cache.client_dll) return res.type('text/plain').send(cache.client_dll);
+    console.error("❌ Error actualizando offsets_cs:", err.message);
+  }
+}
+
+// Carga inicial + intervalo automático
+refreshCache();
+setInterval(refreshCache, CACHE_TTL);
+
+// Endpoint para client_dll.cs
+app.get("/client_dll", async (req, res) => {
+  const now = Date.now();
+
+  if (cache.client_dll.data && now - cache.client_dll.updated_at < CACHE_TTL) {
+    return res.type('text/plain').send(cache.client_dll.data);
+  }
+
+  try {
+    cache.client_dll.data       = await fetchFileFromGitHub("client_dll.cs");
+    cache.client_dll.updated_at = Date.now();
+    res.type('text/plain').send(cache.client_dll.data);
+  } catch (err) {
+    if (cache.client_dll.data) return res.type('text/plain').send(cache.client_dll.data);
     res.status(500).send(`Error: ${err.message}`);
   }
 });
@@ -54,27 +79,36 @@ app.get("/client_dll", async (req, res) => {
 // Endpoint para offsets.cs
 app.get("/offsets", async (req, res) => {
   const now = Date.now();
-  const TWELVE_HOURS = 6 * 60 * 60 * 1000;
 
-  if (cache.offsets_cs && now - cache.updated_at < TWELVE_HOURS) {
-    return res.type('text/plain').send(cache.offsets_cs);
+  if (cache.offsets_cs.data && now - cache.offsets_cs.updated_at < CACHE_TTL) {
+    return res.type('text/plain').send(cache.offsets_cs.data);
   }
 
   try {
-    cache.offsets_cs = await fetchFileFromGitHub("offsets.cs");
-    cache.updated_at = now;
-    res.type('text/plain').send(cache.offsets_cs);
+    cache.offsets_cs.data       = await fetchFileFromGitHub("offsets.cs");
+    cache.offsets_cs.updated_at = Date.now();
+    res.type('text/plain').send(cache.offsets_cs.data);
   } catch (err) {
-    if (cache.offsets_cs) return res.type('text/plain').send(cache.offsets_cs);
+    if (cache.offsets_cs.data) return res.type('text/plain').send(cache.offsets_cs.data);
     res.status(500).send(`Error: ${err.message}`);
   }
 });
 
 // Health check endpoint
 app.get("/health", (req, res) => {
-  res.status(200).json({ 
-    status: "OK", 
-    cache_age: cache.updated_at ? Date.now() - cache.updated_at : null 
+  const now = Date.now();
+  res.status(200).json({
+    status: "OK",
+    cache: {
+      client_dll: {
+        cached: !!cache.client_dll.data,
+        age_ms: cache.client_dll.updated_at ? now - cache.client_dll.updated_at : null,
+      },
+      offsets_cs: {
+        cached: !!cache.offsets_cs.data,
+        age_ms: cache.offsets_cs.updated_at ? now - cache.offsets_cs.updated_at : null,
+      },
+    },
   });
 });
 
